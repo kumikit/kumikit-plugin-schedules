@@ -1,0 +1,20 @@
+[package]
+name = "kumikit-schedules"
+description = "Scheduled prompts plugin for Kumikit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+kumikit-plugin.workspace = true
+serde.workspace = true
+serde_json.workspace = true

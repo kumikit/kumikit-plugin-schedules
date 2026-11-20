@@ -1,0 +1,29 @@
+# Scheduled prompts (`kumikit.schedules`): run saved prompts on a cron schedule.
+id = "kumikit.schedules"
+name = "Scheduled Prompts"
+version = "0.1.0"
+description = "Create recurring agent prompts on a cron schedule in any open workspace."
+license = "MIT"
+repository = "https://github.com/kumikit/kumikit-plugin-schedules"
+kind = ["integration"]
+api = "^0.2"
+
+[runtime]
+wasm = "plugin.wasm"
+worlds = ["kumikit:plugin/plugin@0.2.0"]
+
+[permissions]
+schedules = true
+client = ["workspaces.list", "threads.create", "threads.send"]
+workspaces = "all"
+
+[contributes]
+commands = [
+  { id = "new", title = "New scheduled prompt", scope = "core" },
+  { id = "create", title = "Save scheduled prompt", scope = "core" },
+]
+methods = [
+  { name = "list", scope = "core" },
+  { name = "create", scope = "core" },
+  { name = "delete", scope = "core" },
+]
