@@ -1,7 +1,7 @@
 # Scheduled prompts (`kumikit.schedules`): run saved prompts on a cron schedule.
 id = "kumikit.schedules"
 name = "Scheduled Prompts"
-version = "0.1.0"
+version = "0.1.1"
 description = "Create recurring agent prompts on a cron schedule in any open workspace."
 license = "MIT"
 repository = "https://github.com/kumikit/kumikit-plugin-schedules"
