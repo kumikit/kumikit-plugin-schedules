@@ -1,0 +1,155 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  KUMIKIT_TAG: v0.1.0-m5
+  PUBLISHER_KEY: ed25519:00Ji-S866EV-IwRItk9Gk-M5N--4nvBzbbqvT6MRNNg
+  RUST: 1.100.0
+
+jobs:
+  detect:
+    runs-on: ubuntu-24.04
+    outputs:
+      plugins: ${{ steps.scan.outputs.plugins }}
+      has_releases: ${{ steps.scan.outputs.has_releases }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: scan
+        run: |
+          pending=""
+          while read -r id ver tag; do
+            if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "New version to release: $id $ver (tag $tag)"
+              pending="$pending $id"
+            fi
+          done <<EOF
+          $(sh scripts/pack.sh --list)
+          EOF
+          pending=$(echo "$pending" | xargs || true)
+          echo "plugins=$pending" >> "$GITHUB_OUTPUT"
+          if [ -n "$pending" ]; then
+            echo "has_releases=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_releases=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: detect
+    if: needs.detect.outputs.has_releases == 'true'
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/kumikit
+          key: kumikit-cli-${{ env.KUMIKIT_TAG }}-${{ env.RUST }}
+      - name: Install kumikit CLI
+        run: |
+          if [ ! -x ~/.cargo/bin/kumikit ]; then
+            cargo +"$RUST" install --locked --git https://github.com/kumikit/kumikit --tag "$KUMIKIT_TAG" kumikit-core
+          fi
+      - name: Test and build kumikit.schedules WASM
+        run: |
+          cargo test -p kumikit-schedules
+          cargo build --target wasm32-wasip2 --release -p kumikit-schedules
+      - name: Pack, sign and verify packages
+        env:
+          PLUGINS: ${{ needs.detect.outputs.plugins }}
+          KUMIKIT_SIGNING_KEY: ${{ secrets.KUMIKIT_SIGNING_KEY }}
+        run: |
+          if [ -z "${KUMIKIT_SIGNING_KEY:-}" ]; then
+            echo "::error::KUMIKIT_SIGNING_KEY secret is not configured in the release environment"
+            exit 1
+          fi
+          # shellcheck disable=SC2086
+          KUMIKIT_BIN="$HOME/.cargo/bin/kumikit" sh scripts/pack.sh dist $PLUGINS
+          for f in dist/*.kkp; do
+            "$HOME/.cargo/bin/kumikit" plugin sign "$f"
+            "$HOME/.cargo/bin/kumikit" plugin verify --key "$PUBLISHER_KEY" "$f"
+          done
+      - name: Tag and create GitHub Releases
+        env:
+          PLUGINS: ${{ needs.detect.outputs.plugins }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          while read -r id ver tag; do
+            case " $PLUGINS " in
+              *" $id "*) ;;
+              *) continue ;;
+            esac
+            kkp="dist/${id}-${ver}.kkp"
+            sha_file="dist/${id}-${ver}.sha256"
+            (cd dist && sha256sum "${id}-${ver}.kkp") > "$sha_file"
+            git tag -a "$tag" -m "Release ${id} ${ver}"
+            git push origin "refs/tags/${tag}"
+            gh release create "$tag" "$kkp" "$sha_file" \
+              --title "${id} ${ver}" \
+              --notes "Signed package for \`${id}\` ${ver} (publisher key \`${PUBLISHER_KEY}\`)."
+          done <<EOF
+          $(sh scripts/pack.sh --list)
+          EOF
+      - name: Open PR in kumikit/registry
+        env:
+          PLUGINS: ${{ needs.detect.outputs.plugins }}
+          GH_TOKEN: ${{ secrets.REGISTRY_PR_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::REGISTRY_PR_TOKEN is not configured; skipping automatic kumikit/registry PR."
+            exit 0
+          fi
+          command -v zstd >/dev/null || (sudo apt-get update && sudo apt-get install -y zstd)
+          gh auth setup-git
+          reg="$RUNNER_TEMP/registry"
+          rm -rf "$reg"
+          gh repo clone kumikit/registry "$reg"
+          set --
+          while read -r id ver tag; do
+            case " $PLUGINS " in
+              *" $id "*) ;;
+              *) continue ;;
+            esac
+            url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${id}-${ver}.kkp"
+            set -- "$@" --item "$PWD/dist/${id}-${ver}.kkp::${url}"
+          done <<EOF
+          $(sh scripts/pack.sh --list)
+          EOF
+          added=$(python3 scripts/registry-entry.py --registry "$reg" "$@")
+          if [ -z "$added" ]; then
+            echo "All released versions are already present in kumikit/registry."
+            exit 0
+          fi
+          short_sha=$(git rev-parse --short HEAD)
+          repo_name=${GITHUB_REPOSITORY#*/}
+          branch="release/${repo_name}-${short_sha}"
+          cd "$reg"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add plugins/
+          title="feat: release ${added}"
+          git commit -m "$title"
+          git push -u origin "$branch"
+          body=$(printf 'Automated release PR from `%s` (`%s`):\n\n- `%s`\n' "$GITHUB_REPOSITORY" "$short_sha" "$added")
+          gh pr create --repo kumikit/registry --head "$branch" --title "$title" --body "$body"
