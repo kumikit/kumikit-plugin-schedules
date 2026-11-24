@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - uses: kumikit/kumikit/.github/actions/setup-kumikit@v0.1.0-m7.1
+      - uses: kumikit/kumikit/.github/actions/setup-kumikit@v0.1.0-m7.2
         with:
           tools: kumikit,test-kit
       - name: Format, clippy (native and wasm32-wasip2) and unit tests
