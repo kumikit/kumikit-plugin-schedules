@@ -154,7 +154,7 @@ impl Core {
         };
         c.call(
             "core.hello",
-            json!({ "protocol": "0.6", "client": { "name": "kumikit-schedules-e2e", "version": "0" } }),
+            json!({ "protocol": "0.7", "client": { "name": "kumikit-schedules-e2e", "version": "0" } }),
         );
         c
     }
