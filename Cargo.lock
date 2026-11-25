@@ -101,7 +101,7 @@ checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 [[package]]
 name = "kumikit-plugin"
 version = "0.1.0"
-source = "git+https://github.com/kumikit/kumikit?rev=c09e83d596c1eebbed7e574187f7fcd608e51efa#c09e83d596c1eebbed7e574187f7fcd608e51efa"
+source = "git+https://github.com/kumikit/kumikit?rev=0fa256e528058d05b42d4b09bf76b028865370ca#0fa256e528058d05b42d4b09bf76b028865370ca"
 dependencies = [
  "wasip2",
  "wit-bindgen 0.61.1",
